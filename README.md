@@ -45,4 +45,4 @@ $ npm run cdk deploy
 
 ## License
 
-MIT
+MIT-0
