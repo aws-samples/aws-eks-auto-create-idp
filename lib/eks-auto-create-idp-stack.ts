@@ -3,7 +3,8 @@ import * as cloudtrail from '@aws-cdk/aws-cloudtrail';
 import * as lambda from '@aws-cdk/aws-lambda';
 import * as iam from '@aws-cdk/aws-iam';
 import * as targets from '@aws-cdk/aws-events-targets';
-import * as destinations from '@aws-cdk/aws-lambda-destinations';
+import * as sfn from '@aws-cdk/aws-stepfunctions';
+import * as tasks from '@aws-cdk/aws-stepfunctions-tasks';
 
 export class EksAutoCreateIdpStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -11,19 +12,42 @@ export class EksAutoCreateIdpStack extends cdk.Stack {
 
     const code = lambda.AssetCode.fromAsset('resource/manage-iam-idp');
 
-    const createIdpFunction = new lambda.Function(this, 'CreateIdpFunction', {
+    const startStateMachine = new lambda.Function(this, 'StartStateMachine', {
       code,
-      handler: 'index.onCreateCluster',
+      handler: 'index.startStateMachine',
       runtime: lambda.Runtime.NODEJS_12_X,
-      timeout: cdk.Duration.minutes(15)
+      timeout: cdk.Duration.minutes(1),
     });
-    if (createIdpFunction.role) {
-      createIdpFunction.role.addToPolicy(new iam.PolicyStatement({
+    if (startStateMachine.role) {
+      startStateMachine.role.addToPolicy(new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['eks:DescribeCluster'],
         resources: ['*']
       }));
-      createIdpFunction.role.addToPolicy(new iam.PolicyStatement({
+    }
+
+    const isClusterReady = new lambda.Function(this, 'IsClusterReady', {
+      code,
+      handler: 'index.isClusterReady',
+      runtime: lambda.Runtime.NODEJS_12_X,
+      timeout: cdk.Duration.minutes(1)
+    });
+    if (isClusterReady.role) {
+      isClusterReady.role.addToPolicy(new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['eks:DescribeCluster'],
+        resources: ['*']
+      }));
+    }
+
+    const createOIDCProvider = new lambda.Function(this, 'CreateOIDCProvider', {
+      code,
+      handler: 'index.createOIDCProvider',
+      runtime: lambda.Runtime.NODEJS_12_X,
+      timeout: cdk.Duration.minutes(1)
+    });
+    if (createOIDCProvider.role) {
+      createOIDCProvider.role.addToPolicy(new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ['iam:CreateOpenIDConnectProvider'],
         resources: ['*']
@@ -61,7 +85,7 @@ export class EksAutoCreateIdpStack extends cdk.Stack {
           eventName: ['CreateCluster']
         }
       },
-      target: new targets.LambdaFunction(createIdpFunction),
+      target: new targets.LambdaFunction(startStateMachine),
     });
 
     cloudtrail.Trail.onEvent(this, 'EksClusterDeletedEvent', {
@@ -74,5 +98,24 @@ export class EksAutoCreateIdpStack extends cdk.Stack {
       },
       target: new targets.LambdaFunction(deleteIdpFunction)
     });
+
+    const isClusterReadyTask = new tasks.LambdaInvoke(this, 'IsClusterReadyState', {
+      lambdaFunction: isClusterReady,
+    }).addRetry({
+      backoffRate: 1,
+      interval: cdk.Duration.seconds(30),
+      maxAttempts: 50
+    });
+
+    const createOIDCProviderTask = new tasks.LambdaInvoke(this, 'CreateOIDCProviderState', {
+      lambdaFunction: createOIDCProvider,
+      inputPath: '$.Payload'
+    });
+
+    const stateMachine = new sfn.StateMachine(this, 'StateMachine', {
+      definition: isClusterReadyTask.next(createOIDCProviderTask)
+    });
+    stateMachine.grantStartExecution(startStateMachine);
+    startStateMachine.addEnvironment('STATE_MACHINE_ARN', stateMachine.stateMachineArn);
   }
 }
