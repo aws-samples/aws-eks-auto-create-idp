@@ -26,7 +26,6 @@ access to create arbitrary IAM Identity Providers.
 ## Quick start
 
 ```sh
-$ npm install eks-auto-create-idp
 $ npm run cdk deploy
 ```
 
