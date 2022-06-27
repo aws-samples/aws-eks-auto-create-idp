@@ -14,7 +14,7 @@
     "@aws-cdk/assert": "1.97.0",
     "@types/jest": "^25.2.1",
     "@types/node": "10.17.5",
-    "aws-cdk": "1.97.0",
+    "aws-cdk": "^1.161.0",
     "eslint": "^7.23.0",
     "eslint-config-standard": "^14.1.1",
     "eslint-plugin-import": "^2.22.0",
