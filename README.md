@@ -1,3 +1,9 @@
+> [!IMPORTANT]  
+> This repository has been archived and will no longer receive updates. The functionality it
+> provides is no longer necessary -- please consider using
+> [EKS Pod Identities](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
+> instead of IAM Roles for Service Accounts to allow your Pods to obtain AWS IAM credentials.
+
 # Amazon EKS IAM Identity Provider Automation
 
 This project builds a mechanism that automatically manages the lifecycle of
